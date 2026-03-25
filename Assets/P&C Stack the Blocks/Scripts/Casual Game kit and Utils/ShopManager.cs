@@ -4,6 +4,12 @@ using UnityEngine.UI;
 
 namespace PnCCasualGameKit
 {
+    public enum PurchaseType
+    {
+        Gems,
+        Ads,
+        IAP
+    }
 
     /// <summary>
     /// The base Data class for any shop item.
@@ -18,6 +24,8 @@ namespace PnCCasualGameKit
         public bool isLocked;
         public float cost;
         public Sprite thumbnail;
+        public PurchaseType purchaseType;
+        public string iapProductID;
     }
 
 
@@ -136,34 +144,27 @@ namespace PnCCasualGameKit
             //if item is not locked
             if (!shopItem.itemData.isLocked)
             {
-                //Turn of current items selection
-                if (selectedShopItem != null)
-                {
-                    selectedShopItem.toggleselection(false);
-                }
-                //set this item to selectedShopItem
+                if (selectedShopItem != null) selectedShopItem.toggleselection(false);
                 selectedShopItem = shopItem;
-
                 shopItem.toggleselection(true);
-
                 ItemSelected(true, true, (T)selectedShopItem.itemData);
-
+                return;
             }
-            //else call ItemSelected with necessary data for the derived class to do the required action.
-            else
+
+            selectedShopItemforBuying = shopItem;
+            var data = shopItem.itemData;
+
+            switch (data.purchaseType)
             {
-                //set this item to selectedShopItemforBuying
-                selectedShopItemforBuying = shopItem;
-
-                if (selectedShopItemforBuying.itemData.cost <= availableCash)
-                {
-                    ItemSelected(false, true, (T)selectedShopItem.itemData);
-                }
-                else
-                {
-                    ItemSelected(false, false, (T)selectedShopItem.itemData);
-
-                }
+                case PurchaseType.Gems:
+                    ItemSelected(false, availableCash >= data.cost, (T)data);
+                    break;
+                case PurchaseType.Ads:
+                    ItemSelected(false, true, (T)data);
+                    break;
+                case PurchaseType.IAP:
+                    ItemSelected(false, true, (T)data);
+                    break;
             }
 
         }
@@ -181,27 +182,72 @@ namespace PnCCasualGameKit
         /// </summary>
         public void BuyItem()
         {
-            //if cash is enough for purchase unlock this item, select it adn reduce available cash
-            if (selectedShopItemforBuying.itemData.cost <= availableCash)
+            var data = selectedShopItemforBuying.itemData;
+
+            switch (data.purchaseType)
             {
-                selectedShopItemforBuying.toggleLock(false);
-                selectItem(selectedShopItemforBuying);
-                availableCash -= selectedShopItemforBuying.itemData.cost;
-                ItemPurcahsed(true, availableCash, selectedShopItemforBuying.itemData.ID);
-                selectedShopItemforBuying = null;
+                case PurchaseType.Gems:
+                    if (availableCash >= data.cost)
+                    {
+                        UnlockItem(selectedShopItemforBuying);
+                        availableCash -= data.cost;
+                        ItemPurcahsed(true, availableCash, data.ID);
+                    }
+                    else
+                    {
+                        ItemPurcahsed(false);
+                    }
+                    break;
+
+                case PurchaseType.Ads:
+                    ShowRewardedAd(() =>
+                    {
+                        UnlockItem(selectedShopItemforBuying);
+                        ItemPurcahsed(true, availableCash, data.ID);
+                    }, () =>
+                    {
+                        ItemPurcahsed(false);
+                    });
+                    break;
+
+                case PurchaseType.IAP:
+                    YGInAppPurchase(data.iapProductID, success =>
+                    {
+                        if (success)
+                        {
+                            UnlockItem(selectedShopItemforBuying);
+                            ItemPurcahsed(true, availableCash, data.ID);
+                        }
+                        else
+                        {
+                            ItemPurcahsed(false);
+                        }
+                    });
+                    break;
             }
-            else
-            {
-                ItemPurcahsed(false);
-            }
+            
+            selectedShopItemforBuying = null;
         }
 
-        /// <summary>
-        /// Override this method to implement any methods after the item is purchased
-        /// </summary>
-        /// <param name="success">If <c>true</c> the purchase was successful.</param>
-        /// <param name="remaingingCash">Remainging cash after purchase.</param>
-        /// <param name="newUnlockedId">new unlocked item ID.</param>
+        private void UnlockItem(ShopItem shopItem)
+        {
+            shopItem.toggleLock(false);
+            selectItem(shopItem);
+        }
+
+        private void ShowRewardedAd(System.Action onSuccess, System.Action onFail)
+        {
+            // сюда вставляем код для показа вознаграждаемой рекламы
+            // если реклама просмотрена полностью, вызываем onSuccess();
+            // иначе onFail();
+        }
+
+        private void YGInAppPurchase(string productId, System.Action<bool> callback)
+        {
+            // тут используем YG плагин для покупки
+            // callback(true) если покупка успешна, иначе callback(false)
+        }
+
         protected abstract void ItemPurcahsed(bool success = true, float remaingingCash = 0, int newUnlockedId = 0);
 
     }
